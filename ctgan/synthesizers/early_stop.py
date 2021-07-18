@@ -10,7 +10,7 @@ class EarlyStop:
                             Default: 4, means 5 values with a delta difference between them
             verbose (bool): If True, prints a message for each validation loss improvement.
                             Default: False
-            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+            delta (float):  Minimum change in the monitored quantity to qualify as an improvement.
                             Default: 0.01
         """
         self.patience = patience

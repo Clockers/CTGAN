@@ -8,8 +8,7 @@ datasets = get_datasets()
 discriminator_steps = 5
 verbose = True
 
-for dataset in ['NSLKDD_All.csv']:
-    print(dataset)
+for dataset in datasets:
 
     data = read_csv(dataset)
     print('Dataset name: ' + dataset + ', Rows: ' + str(len(data)) + ', Features: ' + str(len(data.columns)))

@@ -478,18 +478,18 @@ class CTGANSynthesizer(BaseSynthesizer):
             if self.early_stop == 0:
                 if early_stopping_d.early_stop:
                     print("Discriminator: Early stopping after epochs {}".format(i+1))
-                    early_stopping_d(i)
+                    early_stopping_d(i+1)
                     res = pd.DataFrame(early_stopping_d.loss_mean_vector)
-                    res.to_csv(dataset_name + "EarlyStop0.csv", index=False)
+                    res.to_csv("./datasets/generated/" + dataset_name + "EarlyStop0.csv", index=False)
                     print("Result saved")
                     break
 
             if self.early_stop == 1:
                 if abs(loss_meand) < 0.01:
                     print("Discriminator: Early stopping after epochs {}".format(i+1))
-                    early_stopping_d(i)
+                    early_stopping_d(i+1)
                     res = pd.DataFrame(early_stopping_d.loss_mean_vector)
-                    res.to_csv(dataset_name + "EarlyStop1.csv", index=False)
+                    res.to_csv("./datasets/generated/" + dataset_name + "EarlyStop1.csv", index=False)
                     print("Result saved")
                     break
 
