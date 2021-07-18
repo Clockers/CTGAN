@@ -1,5 +1,6 @@
 import warnings
 
+import statistics
 import numpy as np
 import pandas as pd
 import torch
@@ -10,6 +11,7 @@ from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequ
 from ctgan.data_sampler import DataSampler
 from ctgan.data_transformer import DataTransformer
 from ctgan.synthesizers.base import BaseSynthesizer
+from ctgan.synthesizers.early_stop import EarlyStop
 
 
 class Discriminator(Module):
@@ -137,6 +139,9 @@ class CTGANSynthesizer(BaseSynthesizer):
                  log_frequency=True, verbose=False, epochs=300, pac=10, cuda=True):
 
         assert batch_size % 2 == 0
+
+        self.results_loss_d = []
+        self.early_stop = None
 
         self._embedding_dim = embedding_dim
         self._generator_dim = generator_dim
@@ -267,7 +272,7 @@ class CTGANSynthesizer(BaseSynthesizer):
         if invalid_columns:
             raise ValueError('Invalid columns found: {}'.format(invalid_columns))
 
-    def fit(self, train_data, discrete_columns=tuple(), epochs=None):
+    def fit(self, train_data, discrete_columns=tuple(), epochs=None, early_stop=None, dataset_name=None):
         """Fit the CTGAN Synthesizer models to the training data.
 
         Args:
@@ -278,7 +283,21 @@ class CTGANSynthesizer(BaseSynthesizer):
                 Vector. If ``train_data`` is a Numpy array, this list should
                 contain the integer indices of the columns. Otherwise, if it is
                 a ``pandas.DataFrame``, this list should contain the column names.
+            epochs:
+                Number of epochs of training
+            early_stop:
+                Mode of early stopping. Check the difference between the current and the last evaluation.
+                early_stop=0 abs(score - last_score) < delta repeated k times
+                early_stop=1 abs(score) < delta
+            dataset_name:
+                Name of the dataset to be train
+
         """
+        if early_stop is not None:
+            self._epochs = 100000
+            epochs = 100000
+            self.early_stop = early_stop
+
         self._validate_discrete_columns(train_data, discrete_columns)
 
         if epochs is None:
@@ -327,7 +346,10 @@ class CTGANSynthesizer(BaseSynthesizer):
         mean = torch.zeros(self._batch_size, self._embedding_dim, device=self._device)
         std = mean + 1
 
+        early_stopping_d = EarlyStop(patience=4, verbose=True)
+
         steps_per_epoch = max(len(train_data) // self._batch_size, 1)
+
         for i in range(epochs):
             for id_ in range(steps_per_epoch):
 
@@ -408,6 +430,68 @@ class CTGANSynthesizer(BaseSynthesizer):
                 print(f"Epoch {i+1}, Loss G: {loss_g.detach().cpu(): .4f},"
                       f"Loss D: {loss_d.detach().cpu(): .4f}",
                       flush=True)
+
+            # Evaluation
+            self.results_loss_d = []
+
+            for id_ in range(steps_per_epoch):
+                fakez = torch.normal(mean=mean, std=std)
+                condvec = self._data_sampler.sample_condvec(self._batch_size)
+                if condvec is None:
+                    c1, m1, col, opt = None, None, None, None
+                    real = self._data_sampler.sample_data(self._batch_size, col, opt)
+                else:
+                    c1, m1, col, opt = condvec
+                    c1 = torch.from_numpy(c1).to(self._device)
+                    m1 = torch.from_numpy(m1).to(self._device)
+                    fakez = torch.cat([fakez, c1], dim=1)
+
+                    perm = np.arange(self._batch_size)
+                    np.random.shuffle(perm)
+                    real = self._data_sampler.sample_data(
+                        self._batch_size, col[perm], opt[perm])
+                    c2 = c1[perm]
+
+                fake = self._generator(fakez)
+                fakeact = self._apply_activate(fake)
+
+                real = torch.from_numpy(real.astype('float32')).to(self._device)
+
+                if c1 is not None:
+                    fake_cat = torch.cat([fakeact, c1], dim=1)
+                    real_cat = torch.cat([real, c2], dim=1)
+                else:
+                    real_cat = real
+                    fake_cat = fake
+
+                y_fake = discriminator(fake_cat)
+                y_real = discriminator(real_cat)
+
+                loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
+
+                self.results_loss_d.append(loss_d.item())
+
+            loss_meand = statistics.mean(self.results_loss_d)
+            print("Loss Discriminator: " + str(loss_meand))
+            early_stopping_d(loss_meand)
+
+            if self.early_stop == 0:
+                if early_stopping_d.early_stop:
+                    print("Discriminator: Early stopping after epochs {}".format(i+1))
+                    early_stopping_d(i)
+                    res = pd.DataFrame(early_stopping_d.loss_mean_vector)
+                    res.to_csv(dataset_name + "EarlyStop0.csv", index=False)
+                    print("Result saved")
+                    break
+
+            if self.early_stop == 1:
+                if abs(loss_meand) < 0.01:
+                    print("Discriminator: Early stopping after epochs {}".format(i+1))
+                    early_stopping_d(i)
+                    res = pd.DataFrame(early_stopping_d.loss_mean_vector)
+                    res.to_csv(dataset_name + "EarlyStop1.csv", index=False)
+                    print("Result saved")
+                    break
 
     def sample(self, n, condition_column=None, condition_value=None):
         """Sample data similar to the training data.
