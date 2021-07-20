@@ -346,7 +346,7 @@ class CTGANSynthesizer(BaseSynthesizer):
         mean = torch.zeros(self._batch_size, self._embedding_dim, device=self._device)
         std = mean + 1
 
-        early_stopping_d = EarlyStop(patience=4, verbose=True)
+        early_stop_d = EarlyStop(patience=4, verbose=True)
 
         steps_per_epoch = max(len(train_data) // self._batch_size, 1)
 
@@ -473,13 +473,13 @@ class CTGANSynthesizer(BaseSynthesizer):
 
             loss_meand = statistics.mean(self.results_loss_d)
             print("Loss Discriminator: " + str(loss_meand))
-            early_stopping_d(loss_meand)
+            early_stop_d(loss_meand)
 
             if self.early_stop == 0:
-                if early_stopping_d.early_stop:
+                if early_stop_d.early_stop:
                     print("Discriminator: Early stopping after epochs {}".format(i+1))
-                    early_stopping_d(i+1)
-                    res = pd.DataFrame(early_stopping_d.loss_mean_vector)
+                    early_stop_d(i+1)
+                    res = pd.DataFrame(early_stop_d.loss_mean_vector)
                     res.to_csv("./datasets/generated/" + dataset_name + "EarlyStop0.csv", index=False)
                     print("Result saved")
                     break
@@ -487,8 +487,8 @@ class CTGANSynthesizer(BaseSynthesizer):
             if self.early_stop == 1:
                 if abs(loss_meand) < 0.01:
                     print("Discriminator: Early stopping after epochs {}".format(i+1))
-                    early_stopping_d(i+1)
-                    res = pd.DataFrame(early_stopping_d.loss_mean_vector)
+                    early_stop_d(i+1)
+                    res = pd.DataFrame(early_stop_d.loss_mean_vector)
                     res.to_csv("./datasets/generated/" + dataset_name + "EarlyStop1.csv", index=False)
                     print("Result saved")
                     break
