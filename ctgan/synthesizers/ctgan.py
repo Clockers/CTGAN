@@ -141,7 +141,7 @@ class CTGANSynthesizer(BaseSynthesizer):
         assert batch_size % 2 == 0
 
         self.results_loss_d = []
-        self.early_stop = None
+        self.stop_criteria = None
 
         self._embedding_dim = embedding_dim
         self._generator_dim = generator_dim
@@ -272,7 +272,7 @@ class CTGANSynthesizer(BaseSynthesizer):
         if invalid_columns:
             raise ValueError('Invalid columns found: {}'.format(invalid_columns))
 
-    def fit(self, train_data, discrete_columns=tuple(), epochs=None, early_stop=None, dataset_name=None):
+    def fit(self, train_data, discrete_columns=tuple(), epochs=None, stop_criteria=None, dataset_name=None):
         """Fit the CTGAN Synthesizer models to the training data.
 
         Args:
@@ -293,10 +293,10 @@ class CTGANSynthesizer(BaseSynthesizer):
                 Name of the dataset to be train
 
         """
-        if early_stop is not None:
+        if stop_criteria is not None:
             self._epochs = 100000
             epochs = 100000
-            self.early_stop = early_stop
+            self.stop_criteria = stop_criteria
 
         self._validate_discrete_columns(train_data, discrete_columns)
 
@@ -346,7 +346,7 @@ class CTGANSynthesizer(BaseSynthesizer):
         mean = torch.zeros(self._batch_size, self._embedding_dim, device=self._device)
         std = mean + 1
 
-        early_stop_d = EarlyStop(patience=4, verbose=True)
+        early_stop = EarlyStop(stop_criteria, patience=5, verbose=True)
 
         steps_per_epoch = max(len(train_data) // self._batch_size, 1)
 
@@ -473,25 +473,15 @@ class CTGANSynthesizer(BaseSynthesizer):
 
             loss_meand = statistics.mean(self.results_loss_d)
             print("Loss Discriminator: " + str(loss_meand))
-            early_stop_d(loss_meand)
+            early_stop(loss_meand)
 
-            if self.early_stop == 0:
-                if early_stop_d.early_stop:
-                    print("Discriminator: Early stopping after epochs {}".format(i+1))
-                    early_stop_d(i+1)
-                    res = pd.DataFrame(early_stop_d.loss_mean_vector)
-                    res.to_csv("./datasets/generated/" + dataset_name + "EarlyStop0.csv", index=False)
-                    print("Result saved")
-                    break
-
-            if self.early_stop == 1:
-                if abs(loss_meand) < 0.01:
-                    print("Discriminator: Early stopping after epochs {}".format(i+1))
-                    early_stop_d(i+1)
-                    res = pd.DataFrame(early_stop_d.loss_mean_vector)
-                    res.to_csv("./datasets/generated/" + dataset_name + "EarlyStop1.csv", index=False)
-                    print("Result saved")
-                    break
+            if early_stop.stop:
+                print("Discriminator: Early stopping after epochs {}".format(i+1))
+                early_stop(i+1)
+                res = pd.DataFrame(early_stop.loss_mean_vector)
+                res.to_csv("./datasets/generated/" + dataset_name + "EarlyStop" + str(self.stop_criteria) + ".csv", index=False)
+                print("Result saved")
+                break
 
     def sample(self, n, condition_column=None, condition_value=None):
         """Sample data similar to the training data.

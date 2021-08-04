@@ -21,7 +21,7 @@ for dataset in datasets:
 
         print('Fit started')
         start_time = time.time()
-        synthesizer.fit(data, data.select_dtypes('object').columns, early_stop=early_stop, dataset_name=dataset.replace(".csv", ""))
+        synthesizer.fit(data, data.select_dtypes('object').columns, stop_criteria=early_stop, dataset_name=dataset.replace(".csv", ""))
 
         print('Dataset name: ' + dataset + ', Time: ' + str(time.time() - start_time))
 
